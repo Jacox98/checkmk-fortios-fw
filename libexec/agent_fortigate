@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+
+import sys
+import json
+import requests
+import argparse
+from urllib3.exceptions import InsecureRequestWarning
+from typing import Dict, Any, Optional
+
+# Disabilita avvisi SSL
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
+def main():
+    parser = argparse.ArgumentParser(description="CheckMK Special Agent for FortiGate")
+    parser.add_argument("--hostname", required=True, help="FortiGate hostname or IP")
+    parser.add_argument("--api-key", required=True, help="FortiGate API key")
+    parser.add_argument("--port", type=int, default=443, help="HTTPS port (default: 443)")
+    parser.add_argument("--timeout", type=int, default=30, help="Timeout in seconds")
+    
+    args = parser.parse_args()
+    
+    base_url = f"https://{args.hostname}:{args.port}/api/v2"
+    headers = {
+        "Authorization": f"Bearer {args.api_key}",
+        "Content-Type": "application/json"
+    }
+    
+    # Ottieni informazioni sistema
+    try:
+        response = requests.get(
+            f"{base_url}/monitor/system/status",
+            headers=headers,
+            verify=False,
+            timeout=args.timeout
+        )
+        response.raise_for_status()
+        system_data = response.json()
+        
+        print("<<<fortigate_system:sep(0)>>>")
+        print(json.dumps(system_data))
+        
+    except Exception as e:
+        print("<<<fortigate_system:sep(0)>>>")
+        print(f'{{"error": "{str(e)}"}}')
+    
+    # Ottieni informazioni firmware
+    try:
+        response = requests.get(
+            f"{base_url}/monitor/system/firmware",
+            headers=headers,
+            verify=False,
+            timeout=args.timeout
+        )
+        response.raise_for_status()
+        firmware_data = response.json()
+        
+        print("<<<fortigate_firmware:sep(0)>>>")
+        print(json.dumps(firmware_data))
+        
+    except Exception as e:
+        print("<<<fortigate_firmware:sep(0)>>>")
+        print(f'{{"error": "{str(e)}"}}')
+
+if __name__ == "__main__":
+    main()
