@@ -13,9 +13,9 @@ from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic, Help, Title
 
 def _formspec():
     return Dictionary(
-        title=Title("FortiGate via REST API"),
+        title=Title("Fortigate Firmware via REST API"),
         help_text=Help(
-            "Monitor FortiGate devices via REST API. "
+            "Monitor FortiGate firmware via REST API. "
             "Requires valid API key with read permissions for system endpoints."
         ),
         elements={
@@ -49,9 +49,9 @@ def _formspec():
         }
     )
 
-rule_spec_fortigate = SpecialAgent(
+rule_spec_fortigate_firmware = SpecialAgent(
     topic=Topic.NETWORKING,
     name="fortigate",
-    title=Title("FortiGate"),
+    title=Title("Fortigate Firmware"),
     parameter_form=_formspec
 )

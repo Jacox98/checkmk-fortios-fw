@@ -10,7 +10,7 @@ This repository provides a CheckMK extension for monitoring FortiGate firewalls 
 
 1. Copy the files to your CheckMK site's `local` directory or package them as an MKP.
 2. Create an API key on the FortiGate with read permissions for system endpoints.
-3. In CheckMK, configure the **FortiGate via REST API** rule and provide the API key, optional port and timeout values.
+3. In CheckMK, configure the **Fortigate Firmware** rule and provide the API key, optional port and timeout values.
 
 ## Features
 

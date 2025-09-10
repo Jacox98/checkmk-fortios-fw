@@ -101,12 +101,12 @@ def parse_fortigate_firmware(string_table):
         return {"error": "JSON parse failed"}
 
 def discover_fortigate_firmware(section):
-    """Discovery function for FortiGate Firmware"""
+    """Discovery function for Fortigate Firmware"""
     if section:
         yield Service()
 
 def check_fortigate_firmware(section):
-    """Check function for FortiGate Firmware Updates - Enhanced with CRITICAL logic"""
+    """Check function for Fortigate Firmware - Enhanced with CRITICAL logic"""
     if not section:
         yield Result(state=State.UNKNOWN, summary="No firmware data received")
         return
@@ -343,7 +343,7 @@ agent_section_fortigate_firmware = AgentSection(
 
 check_plugin_fortigate_firmware = CheckPlugin(
     name="fortigate_firmware",
-    service_name="FortiGate Firmware Updates", 
+    service_name="FortiGate Firmware Updates",
     discovery_function=discover_fortigate_firmware,
     check_function=check_fortigate_firmware,
 )
