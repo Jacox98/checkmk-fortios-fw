@@ -7,23 +7,10 @@ from cmk.rulesets.v1.form_specs import (
     Integer,
     Password,
     DefaultValue,
+    Checkbox,
     migrate_to_password,
 )
-try:  # Compatibility across Checkmk builds
-    from cmk.rulesets.v1.form_specs import BooleanChoice  # type: ignore
-    def bool_choice(title, help_text, prefill):
-        return BooleanChoice(title=title, help_text=help_text, prefill=prefill)
-except Exception:  # Fallback to dropdown if BooleanChoice is unavailable
-    from cmk.rulesets.v1.form_specs import DropdownChoice  # type: ignore
-    def bool_choice(title, help_text, prefill):
-        return DropdownChoice(
-            title=title,
-            help_text=help_text,
-            choices=[(True, "Yes"), (False, "No")],
-            prefill=prefill,
-        )
 from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic, Help, Title
-
 
 def _formspec():
     return Dictionary(
@@ -42,24 +29,24 @@ def _formspec():
                         "Generate in System > Administrators with read-only profile."
                     ),
                     migrate=migrate_to_password,
-                ),
             ),
-            "critical_on_branch_change": DictElement(
-                required=False,
-                parameter_form=bool_choice(
-                    title=Title("Consider branch change critical"),
-                    help_text=Help(
-                        "If enabled, moving to a newer FortiOS branch (e.g. 7.4 → 7.6) can contribute to a CRIT state. "
-                        "Disable to report branch changes as WARN only."
-                    ),
-                    prefill=DefaultValue(True),
+        ),
+        "critical_on_branch_change": DictElement(
+            required=False,
+            parameter_form=Checkbox(
+                title=Title("Consider branch change critical"),
+                help_text=Help(
+                    "If enabled, moving to a newer FortiOS branch (e.g. 7.4 → 7.6) can contribute to a CRIT state. "
+                    "Disable to report branch changes as WARN only."
                 ),
+                prefill=DefaultValue(True),
             ),
-            "port": DictElement(
-                required=False,
-                parameter_form=Integer(
-                    title=Title("HTTPS Port"),
-                    help_text=Help("FortiGate HTTPS port"),
+        ),
+        "port": DictElement(
+            required=False,
+            parameter_form=Integer(
+                title=Title("HTTPS Port"),
+                help_text=Help("FortiGate HTTPS port"),
                     prefill=DefaultValue(443),
                 ),
             ),
@@ -71,13 +58,13 @@ def _formspec():
                     prefill=DefaultValue(30),
                 ),
             ),
-        },
+        }
     )
-
 
 rule_spec_fortigate_firmware = SpecialAgent(
     topic=Topic.NETWORKING,
     name="fortigate",
     title=Title("Fortigate Firmware"),
-    parameter_form=_formspec,
+    parameter_form=_formspec
 )
+
