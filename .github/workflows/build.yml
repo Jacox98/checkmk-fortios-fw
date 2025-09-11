@@ -1,29 +1,26 @@
-name: Build MKP package
+name: Build MKP Package
 
 on:
   push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
+    tags: ['v*']
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
+      
       - name: Extract version
         id: version
         run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
+      
       - name: Build MKP
-        id: build-mkp
         uses: oposs/mkp-builder@v2
         with:
           version: ${{ steps.version.outputs.version }}
-
+          
       - name: Upload MKP Package
         uses: actions/upload-artifact@v4
         with:
-          name: fortigate-mkp
+          name: mkp-package
           path: ${{ steps.build-mkp.outputs.package-file }}
