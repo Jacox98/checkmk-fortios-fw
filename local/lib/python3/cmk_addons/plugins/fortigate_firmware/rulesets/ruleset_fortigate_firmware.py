@@ -19,10 +19,10 @@ try:
                 "How to rate availability of a newer FortiOS branch (e.g. 7.4 -> 7.6)."
             ),
             elements=[
-                SingleChoiceElement(True, Title("Critical: treat branch upgrades as CRIT candidate")),
-                SingleChoiceElement(False, Title("Warn only: branch upgrades are non-critical")),
+                SingleChoiceElement("critical", Title("Critical: treat branch upgrades as CRIT candidate")),
+                SingleChoiceElement("warn", Title("Warn only: branch upgrades are non-critical")),
             ],
-            prefill=DefaultValue(True),
+            prefill=DefaultValue("critical"),
         )
 except Exception:
     from cmk.rulesets.v1.form_specs import BooleanChoice  # type: ignore
