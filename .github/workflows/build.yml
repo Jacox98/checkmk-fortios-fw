@@ -26,12 +26,13 @@ jobs:
           fi
 
       - name: Build MKP
+        id: build-mkp
         uses: oposs/mkp-builder@v2
         with:
           version: ${{ steps.version.outputs.version }}
           
-      - name: Upload MKP Package
-        uses: actions/upload-artifact@v4
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: mkp-package
-          path: ${{ steps.build-mkp.outputs.package-file }}
+          files: ${{ steps.build-mkp.outputs.package-file }}
+          generate_release_notes: true
