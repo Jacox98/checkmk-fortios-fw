@@ -6,6 +6,7 @@ import requests
 import argparse
 from urllib3.exceptions import InsecureRequestWarning
 from typing import Dict, Any, Optional
+from requests import exceptions as req_exc
 
 # Disabilita avvisi SSL
 requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
@@ -25,23 +26,66 @@ def main():
         "Content-Type": "application/json"
     }
     
+    # Helper to classify exceptions into structured, short messages
+    def _error_payload(exc: Exception, endpoint: str) -> Dict[str, Any]:
+        msg = str(exc)
+        text = msg.lower()
+        error_type = "request"
+        # Classify common connection issues
+        if isinstance(exc, (req_exc.ConnectTimeout, req_exc.ReadTimeout, req_exc.Timeout)) or "timed out" in text:
+            error_type = "timeout"
+            short = "Connection timed out"
+        elif isinstance(exc, req_exc.SSLError) or "ssl" in text:
+            error_type = "ssl"
+            short = "SSL error"
+        elif isinstance(exc, req_exc.ConnectionError) or any(s in text for s in [
+            "failed to establish a new connection",
+            "no route to host",
+            "name or service not known",
+            "temporary failure in name resolution",
+            "connection refused",
+        ]):
+            error_type = "connection"
+            # Try to produce a concise, friendly message
+            if "no route to host" in text:
+                short = "No route to host"
+            elif "name or service not known" in text or "name resolution" in text:
+                short = "DNS resolution failed"
+            elif "connection refused" in text:
+                short = "Connection refused"
+            else:
+                short = "Failed to connect"
+        elif isinstance(exc, req_exc.HTTPError):
+            error_type = "http"
+            short = f"HTTP error: {getattr(exc.response, 'status_code', 'unknown')}"
+        else:
+            short = "Request failed"
+
+        return {
+            "status": "error",
+            "error": error_type,
+            "message": short,
+            "endpoint": endpoint,
+            "detail": msg,
+        }
+
     # Ottieni informazioni sistema
     try:
         response = requests.get(
             f"{base_url}/monitor/system/status",
             headers=headers,
             verify=False,
-            timeout=args.timeout
+            timeout=args.timeout,
         )
         response.raise_for_status()
         system_data = response.json()
-        
+
         print("<<<fortigate_system:sep(0)>>>")
         print(json.dumps(system_data))
-        
+
     except Exception as e:
         print("<<<fortigate_system:sep(0)>>>")
-        print(f'{{"error": "{str(e)}"}}')
+        print(json.dumps(_error_payload(e, "/monitor/system/status")))
     
     # Ottieni informazioni firmware
     try:
@@ -49,17 +93,17 @@ def main():
             f"{base_url}/monitor/system/firmware",
             headers=headers,
             verify=False,
-            timeout=args.timeout
+            timeout=args.timeout,
         )
         response.raise_for_status()
         firmware_data = response.json()
-        
+
         print("<<<fortigate_firmware:sep(0)>>>")
         print(json.dumps(firmware_data))
-        
+
     except Exception as e:
         print("<<<fortigate_firmware:sep(0)>>>")
-        print(f'{{"error": "{str(e)}"}}')
+        print(json.dumps(_error_payload(e, "/monitor/system/firmware")))
 
 if __name__ == "__main__":
     main()

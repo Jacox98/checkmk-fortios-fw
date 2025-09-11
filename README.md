@@ -18,6 +18,12 @@ This repository provides a CheckMK extension for monitoring FortiGate firewalls 
 - Detects firmware update availability and highlights critical gaps in maintenance.
 - Provides metrics for trending the installed version and number of pending updates.
 
+## Error Handling
+
+- Connection issues (e.g. no route to host, timeouts, DNS failures) are classified by the special agent and reported as UNKNOWN with concise messages instead of raw tracebacks.
+- Firmware update retrieval problems that are not connectivity-related are reported as WARN to avoid unnecessary CRIT noise.
+- Authentication/SSL/HTTP errors on the System service are reported as CRIT with a clear summary.
+
 ## Development
 
 The repository currently ships without automated tests. To ensure the environment is set up correctly you can run:

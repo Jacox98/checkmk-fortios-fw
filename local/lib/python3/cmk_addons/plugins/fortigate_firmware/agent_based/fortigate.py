@@ -43,11 +43,21 @@ def check_fortigate_system(section):
     if not section:
         yield Result(state=State.UNKNOWN, summary="No data received")
         return
-    
-    if "error" in section:
-        yield Result(state=State.CRIT, summary=f"Error: {section['error']}")
+
+    # Unified error handling: prefer structured errors from special agent
+    if "error" in section or section.get("status") == "error":
+        err_type = str(section.get("error", "")).lower()
+        msg = section.get("message") or section.get("error") or "Request failed"
+        detail = section.get("detail")
+
+        # Map connectivity to UNKNOWN, auth/ssl/http to CRIT
+        unknown_hints = ["no route to host", "failed to connect", "failed to establish", "dns", "resolution", "refused", "timed out", "timeout"]
+        is_unknown = err_type in ("connection", "timeout") or any(h in str(msg).lower() for h in unknown_hints) or any(h in str(detail).lower() for h in unknown_hints) if detail else False
+        state = State.UNKNOWN if is_unknown else State.CRIT
+
+        yield Result(state=state, summary=msg, details=(detail or None))
         return
-    
+
     if section.get("status") != "success":
         yield Result(state=State.CRIT, summary="FortiGate API request failed")
         return
@@ -110,11 +120,21 @@ def check_fortigate_firmware(section):
     if not section:
         yield Result(state=State.UNKNOWN, summary="No firmware data received")
         return
-    
-    if "error" in section:
-        yield Result(state=State.WARN, summary=f"Cannot check updates: {section['error']}")
+
+    # Unified error handling: prefer structured errors from special agent
+    if "error" in section or section.get("status") == "error":
+        err_type = str(section.get("error", "")).lower()
+        msg = section.get("message") or section.get("error") or "Cannot retrieve firmware information"
+        detail = section.get("detail")
+
+        unknown_hints = ["no route to host", "failed to connect", "failed to establish", "dns", "resolution", "refused", "timed out", "timeout"]
+        is_unknown = err_type in ("connection", "timeout") or any(h in str(msg).lower() for h in unknown_hints) or any(h in str(detail).lower() for h in unknown_hints) if detail else False
+        # For firmware, connection issues -> UNKNOWN, other errors -> WARN (non-service-impacting)
+        state = State.UNKNOWN if is_unknown else State.WARN
+
+        yield Result(state=state, summary=f"Cannot check updates: {msg}", details=(detail or None))
         return
-    
+
     if section.get("status") != "success":
         yield Result(state=State.WARN, summary="Cannot retrieve firmware information")
         return
