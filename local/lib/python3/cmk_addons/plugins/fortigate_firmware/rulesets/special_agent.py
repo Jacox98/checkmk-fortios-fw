@@ -2,12 +2,13 @@
 # Shebang needed only for editors
 
 from cmk.rulesets.v1.form_specs import (
-    Dictionary, 
-    DictElement, 
-    Integer, 
-    Password, 
+    Dictionary,
+    DictElement,
+    Integer,
+    Password,
     DefaultValue,
-    migrate_to_password
+    Checkbox,
+    migrate_to_password,
 )
 from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic, Help, Title
 
@@ -28,13 +29,24 @@ def _formspec():
                         "Generate in System > Administrators with read-only profile."
                     ),
                     migrate=migrate_to_password,
-                ),
             ),
-            "port": DictElement(
-                required=False,
-                parameter_form=Integer(
-                    title=Title("HTTPS Port"),
-                    help_text=Help("FortiGate HTTPS port"),
+        ),
+        "critical_on_branch_change": DictElement(
+            required=False,
+            parameter_form=Checkbox(
+                title=Title("Consider branch change critical"),
+                help_text=Help(
+                    "If enabled, moving to a newer FortiOS branch (e.g. 7.4 → 7.6) can contribute to a CRIT state. "
+                    "Disable to report branch changes as WARN only."
+                ),
+                prefill=DefaultValue(True),
+            ),
+        ),
+        "port": DictElement(
+            required=False,
+            parameter_form=Integer(
+                title=Title("HTTPS Port"),
+                help_text=Help("FortiGate HTTPS port"),
                     prefill=DefaultValue(443),
                 ),
             ),

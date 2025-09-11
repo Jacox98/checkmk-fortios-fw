@@ -14,8 +14,8 @@ This repository provides a CheckMK extension for monitoring FortiGate firewalls 
 
 ## Configuration
 
-- Special agent rule: `Fortigate Firmware` (API key, port, timeout)
-- Check parameters rule: `FortiGate Firmware`
+- Special agent rule: `Fortigate Firmware`
+  - `api_key` (required), `port`, `timeout`
   - `critical_on_branch_change` (default: true)
     - When enabled, a jump to a newer FortiOS branch (e.g. 7.4 → 7.6) can contribute to a CRIT state depending on thresholds.
     - When disabled, branch changes are reported as WARN with an explicit note; CRIT is only triggered when you are significantly behind within the same branch or multiple major versions behind.
@@ -39,7 +39,7 @@ Example messages when branch change is not critical:
 
 ## Notes
 
-- The repository registers a minimal manual check ruleset (`rulesets/static_checks.py`) so the GUI can resolve `static_checks:fortigate_firmware` when opening service parameters. This does not change runtime behaviour; it only prevents a GUI KeyError.
+- The branch-change parameter is configured on the special agent and passed to the check through the agent payload (no separate check-parameters ruleset required).
 
 ## Development
 

@@ -115,7 +115,7 @@ def discover_fortigate_firmware(section):
     if section:
         yield Service()
 
-def check_fortigate_firmware(params, section):
+def check_fortigate_firmware(section):
     """Check function for Fortigate Firmware - Enhanced with CRITICAL logic"""
     if not section:
         yield Result(state=State.UNKNOWN, summary="No firmware data received")
@@ -250,9 +250,12 @@ def check_fortigate_firmware(params, section):
     summary = " → ".join(summary_parts)
     
     # CRITICAL logic with optional branch-change handling
+    # Prefer config passed via special agent payload; default to True
     consider_branch_change_critical = True
     try:
-        consider_branch_change_critical = bool((params or {}).get("critical_on_branch_change", True))
+        consider_branch_change_critical = bool(
+            section.get("config", {}).get("critical_on_branch_change", True)
+        )
     except Exception:
         consider_branch_change_critical = True
 
@@ -432,8 +435,4 @@ check_plugin_fortigate_firmware = CheckPlugin(
     service_name="FortiGate Firmware Updates",
     discovery_function=discover_fortigate_firmware,
     check_function=check_fortigate_firmware,
-    check_default_parameters={
-        "critical_on_branch_change": True,
-    },
-    check_ruleset_name="fortigate_firmware",
 )

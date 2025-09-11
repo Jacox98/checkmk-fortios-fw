@@ -11,6 +11,12 @@ def _agent_arguments(params, host_config):
     ]
     
     # Parametri opzionali
+    # Branch change criticality flag
+    if params.get("critical_on_branch_change", True):
+        args.append("--branch-change-critical")
+    else:
+        args.append("--no-branch-change-critical")
+
     if "port" in params:
         args.extend(["--port", str(params["port"])])
     

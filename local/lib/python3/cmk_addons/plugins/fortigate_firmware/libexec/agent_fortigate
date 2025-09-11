@@ -17,6 +17,19 @@ def main():
     parser.add_argument("--api-key", required=True, help="FortiGate API key")
     parser.add_argument("--port", type=int, default=443, help="HTTPS port (default: 443)")
     parser.add_argument("--timeout", type=int, default=30, help="Timeout in seconds")
+    parser.add_argument(
+        "--branch-change-critical",
+        dest="branch_change_critical",
+        action="store_true",
+        default=True,
+        help="Consider branch change critical (default)",
+    )
+    parser.add_argument(
+        "--no-branch-change-critical",
+        dest="branch_change_critical",
+        action="store_false",
+        help="Do not consider branch change critical",
+    )
     
     args = parser.parse_args()
     
@@ -97,6 +110,14 @@ def main():
         )
         response.raise_for_status()
         firmware_data = response.json()
+        # Inject monitoring configuration flag into payload for the check plugin
+        try:
+            if isinstance(firmware_data, dict):
+                cfg = firmware_data.get("config", {}) if isinstance(firmware_data.get("config"), dict) else {}
+                cfg.update({"critical_on_branch_change": bool(args.branch_change_critical)})
+                firmware_data["config"] = cfg
+        except Exception:
+            pass
 
         print("<<<fortigate_firmware:sep(0)>>>")
         print(json.dumps(firmware_data))
