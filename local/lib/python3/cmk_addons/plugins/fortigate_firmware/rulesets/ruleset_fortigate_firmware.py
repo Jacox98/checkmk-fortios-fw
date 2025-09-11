@@ -8,9 +8,33 @@ from cmk.rulesets.v1.form_specs import (
     Integer,
     Password,
     DefaultValue,
-    DropdownChoice,
     migrate_to_password,
 )
+try:
+    from cmk.rulesets.v1.form_specs import SingleChoice, SingleChoiceElement  # type: ignore
+    def branch_choice():
+        return SingleChoice(
+            title=Title("Branch upgrade severity"),
+            help_text=Help(
+                "How to rate availability of a newer FortiOS branch (e.g. 7.4 -> 7.6)."
+            ),
+            elements=[
+                SingleChoiceElement(True, Title("Critical: treat branch upgrades as CRIT candidate")),
+                SingleChoiceElement(False, Title("Warn only: branch upgrades are non-critical")),
+            ],
+            prefill=DefaultValue(True),
+        )
+except Exception:
+    from cmk.rulesets.v1.form_specs import BooleanChoice  # type: ignore
+    def branch_choice():
+        return BooleanChoice(
+            title=Title("Treat branch upgrades as critical"),
+            help_text=Help(
+                "Enabled: branch change may lead to CRIT depending on thresholds.\n"
+                "Disabled: branch change reported as WARN with an explicit note."
+            ),
+            prefill=DefaultValue(True),
+        )
 from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
@@ -35,17 +59,7 @@ def _parameter_form():
             ),
             "critical_on_branch_change": DictElement(
                 required=False,
-                parameter_form=DropdownChoice(
-                    title=Title("Branch upgrade severity"),
-                    help_text=Help(
-                        "How to rate availability of a newer FortiOS branch (e.g. 7.4 -> 7.6)."
-                    ),
-                    choices=[
-                        (True, "Critical: treat branch upgrades as CRIT candidate"),
-                        (False, "Warn only: branch upgrades are non-critical"),
-                    ],
-                    prefill=DefaultValue(True),
-                ),
+                parameter_form=branch_choice(),
             ),
             "port": DictElement(
                 required=False,
@@ -73,4 +87,3 @@ rule_spec_fortigate_firmware = SpecialAgent(
     title=Title("FortiGate Firmware"),
     parameter_form=_parameter_form,
 )
-
