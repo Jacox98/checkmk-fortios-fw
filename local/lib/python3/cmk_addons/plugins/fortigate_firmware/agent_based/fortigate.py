@@ -115,7 +115,7 @@ def discover_fortigate_firmware(section):
     if section:
         yield Service()
 
-def check_fortigate_firmware(section):
+def check_fortigate_firmware(params, section):
     """Check function for Fortigate Firmware - Enhanced with CRITICAL logic"""
     if not section:
         yield Result(state=State.UNKNOWN, summary="No firmware data received")
@@ -231,7 +231,10 @@ def check_fortigate_firmware(section):
                 minor_versions_behind = high_minor - current_minor_int
         except (ValueError, TypeError):
             pass
-    
+
+    # Branch change available if newer major/minor exists
+    branch_change_available = (major_versions_behind > 0) or (minor_versions_behind > 0)
+
     # Build enhanced summary
     summary_parts = [f"Current: {current_version} build {current_build}"]
     
@@ -246,39 +249,95 @@ def check_fortigate_firmware(section):
     
     summary = " → ".join(summary_parts)
     
-    # CRITICAL logic based on multiple criteria
-    is_critical = False
-    critical_reasons = []
-    
-    # 1. Extremely outdated (>30 updates behind)
+    # CRITICAL logic with optional branch-change handling
+    consider_branch_change_critical = True
+    try:
+        consider_branch_change_critical = bool((params or {}).get("critical_on_branch_change", True))
+    except Exception:
+        consider_branch_change_critical = True
+
+    # Compute standard (all branches) criticality
+    is_critical_all = False
+    critical_reasons_all = []
     if update_count >= 30:
-        is_critical = True
-        critical_reasons.append(f"Extremely outdated ({update_count} versions behind)")
-    
-    # 2. Major version gap (2+ major versions behind)
+        is_critical_all = True
+        critical_reasons_all.append(f"Extremely outdated ({update_count} versions behind)")
     if major_versions_behind >= 2:
-        is_critical = True
-        critical_reasons.append(f"Major version gap ({major_versions_behind} major versions behind)")
-    
-    # 3. Large build gap (>150 builds behind latest)
+        is_critical_all = True
+        critical_reasons_all.append(f"Major version gap ({major_versions_behind} major versions behind)")
     if builds_behind_latest >= 150:
-        is_critical = True
-        critical_reasons.append(f"Large build gap ({builds_behind_latest} builds behind)")
-    
-    # 4. Many security/maintenance updates missed (>8 M-level updates)
+        is_critical_all = True
+        critical_reasons_all.append(f"Large build gap ({builds_behind_latest} builds behind)")
     if security_updates >= 8:
-        is_critical = True
-        critical_reasons.append(f"Multiple security updates missed ({security_updates} maintenance releases)")
-    
-    # 5. Current version no longer maintained (maturity level check)
+        is_critical_all = True
+        critical_reasons_all.append(f"Multiple security updates missed ({security_updates} maintenance releases)")
     if current_maturity == "F" and update_count >= 20:
-        is_critical = True
-        critical_reasons.append("Current version deprecated (F-level) with many newer versions")
-    
-    # 6. Extreme minor version gap (>3 minor versions in same major)
+        is_critical_all = True
+        critical_reasons_all.append("Current version deprecated (F-level) with many newer versions")
     if minor_versions_behind >= 4 and major_versions_behind == 0:
-        is_critical = True
-        critical_reasons.append(f"Multiple minor versions behind ({minor_versions_behind} minor versions)")
+        is_critical_all = True
+        critical_reasons_all.append(f"Multiple minor versions behind ({minor_versions_behind} minor versions)")
+
+    # Compute criticality restricted to same minor branch
+    def _same_branch_criticality():
+        same_branch_updates = []
+        same_branch_security = 0
+        highest_same_branch = None
+        try:
+            for fw in available_fw:
+                fw_build = int(fw.get("build", 0))
+                fw_major = int(fw.get("major", 0))
+                fw_minor = int(fw.get("minor", 0))
+                if fw_major == current_major_int and fw_minor == current_minor_int:
+                    if fw_build > current_build_int:
+                        same_branch_updates.append(fw)
+                        if fw.get("maturity") == "M":
+                            same_branch_security += 1
+                    if (
+                        highest_same_branch is None
+                        or fw_build > int(highest_same_branch.get("build", 0))
+                    ):
+                        highest_same_branch = fw
+        except Exception:
+            same_branch_updates = []
+            same_branch_security = 0
+            highest_same_branch = None
+
+        builds_behind_same = 0
+        if highest_same_branch is not None:
+            try:
+                builds_behind_same = int(highest_same_branch.get("build", 0)) - current_build_int
+            except Exception:
+                builds_behind_same = 0
+
+        is_crit = False
+        reasons = []
+        if len(same_branch_updates) >= 30:
+            is_crit = True
+            reasons.append(
+                f"Extremely outdated within branch ({len(same_branch_updates)} versions)"
+            )
+        if major_versions_behind >= 2:  # still critical if far behind major
+            is_crit = True
+            reasons.append(f"Major version gap ({major_versions_behind} major versions behind)")
+        if builds_behind_same >= 150:
+            is_crit = True
+            reasons.append(f"Large build gap within branch ({builds_behind_same} builds behind)")
+        if same_branch_security >= 8:
+            is_crit = True
+            reasons.append(
+                f"Multiple security updates missed within branch ({same_branch_security} maintenance releases)"
+            )
+        if current_maturity == "F" and len(same_branch_updates) >= 20:
+            is_crit = True
+            reasons.append("Current version deprecated (F-level) with many newer in branch")
+        return is_crit, reasons
+
+    if consider_branch_change_critical:
+        is_critical = is_critical_all
+        critical_reasons = critical_reasons_all
+    else:
+        is_critical, critical_reasons = _same_branch_criticality()
     
     # Additional details
     details_parts = []
@@ -304,6 +363,13 @@ def check_fortigate_firmware(section):
     if is_critical:
         state = State.CRIT
         status_prefix = "CRITICAL - System dangerously outdated"
+    elif (not consider_branch_change_critical) and branch_change_available:
+        # Demote to WARN and clearly state branch change is not critical by rule
+        state = State.WARN
+        status_prefix = "Feature release available (branch change not critical)"
+        details_parts.append(
+            "Note: branch change is configured as non-critical"
+        )
     elif update_count >= 15:
         state = State.WARN
         status_prefix = "System significantly outdated"
@@ -366,4 +432,8 @@ check_plugin_fortigate_firmware = CheckPlugin(
     service_name="FortiGate Firmware Updates",
     discovery_function=discover_fortigate_firmware,
     check_function=check_fortigate_firmware,
+    check_default_parameters={
+        "critical_on_branch_change": True,
+    },
+    check_ruleset_name="fortigate_firmware",
 )
