@@ -22,24 +22,25 @@ except Exception:  # Fallback to dropdown if BooleanChoice is unavailable
             choices=[(True, "Yes"), (False, "No")],
             prefill=prefill,
         )
-from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic, Help, Title
+from cmk.rulesets.v1 import Label, Title, Help
+from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
 
 
 def _formspec():
     return Dictionary(
-        title=Title("Fortigate Firmware via REST API"),
+        title=Title("FortiGate Firmware (Special Agent)"),
         help_text=Help(
-            "Monitor FortiGate firmware via REST API. "
-            "Requires valid API key with read permissions for system endpoints."
+            "Queries FortiGate via REST API to collect system and firmware information. "
+            "Provide an API key with read access."
         ),
         elements={
             "api_key": DictElement(
                 required=True,
                 parameter_form=Password(
-                    title=Title("API Key"),
+                    title=Title("API key"),
                     help_text=Help(
-                        "FortiGate API key for authentication. "
-                        "Generate in System > Administrators with read-only profile."
+                        "FortiGate API token used for authentication. "
+                        "Create it in System → Administrators with a read-only profile."
                     ),
                     migrate=migrate_to_password,
                 ),
@@ -47,10 +48,11 @@ def _formspec():
             "critical_on_branch_change": DictElement(
                 required=False,
                 parameter_form=bool_choice(
-                    title=Title("Consider branch change critical"),
+                    title=Title("Treat branch upgrades as critical"),
                     help_text=Help(
-                        "If enabled, moving to a newer FortiOS branch (e.g. 7.4 → 7.6) can contribute to a CRIT state. "
-                        "Disable to report branch changes as WARN only."
+                        "Controls severity when a newer FortiOS branch is available (e.g. 7.4 → 7.6).\n"
+                        "Enabled: branch change may lead to CRIT depending on thresholds.\n"
+                        "Disabled: branch change reported as WARN with an explicit note."
                     ),
                     prefill=DefaultValue(True),
                 ),
@@ -58,16 +60,16 @@ def _formspec():
             "port": DictElement(
                 required=False,
                 parameter_form=Integer(
-                    title=Title("HTTPS Port"),
-                    help_text=Help("FortiGate HTTPS port"),
+                    title=Title("HTTPS port"),
+                    help_text=Help("FortiGate HTTPS port (default 443)."),
                     prefill=DefaultValue(443),
                 ),
             ),
             "timeout": DictElement(
                 required=False,
                 parameter_form=Integer(
-                    title=Title("Connection Timeout"),
-                    help_text=Help("Timeout in seconds for API requests"),
+                    title=Title("Connection timeout (s)"),
+                    help_text=Help("Timeout in seconds for API requests (default 30)."),
                     prefill=DefaultValue(30),
                 ),
             ),
@@ -78,6 +80,6 @@ def _formspec():
 rule_spec_fortigate_firmware = SpecialAgent(
     topic=Topic.NETWORKING,
     name="fortigate",
-    title=Title("Fortigate Firmware"),
+    title=Title("FortiGate Firmware"),
     parameter_form=_formspec,
 )
