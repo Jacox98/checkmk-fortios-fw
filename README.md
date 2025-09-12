@@ -62,7 +62,13 @@ Enable the nested "OpenCVE Integration" in the same special agent rule to add a 
 - `timeout`: request timeout (default 20s)
 - `list_limit`: how many CVE IDs to show in details (default 10)
 - `warn_threshold` / `crit_threshold`: state thresholds on total CVE count
+- `ssl_verify`: enable/disable TLS verification for self-hosted instances
 
 Notes:
 - The integration requests `/api/vendors/<vendor>/products/<product>/cve` and uses the `count` field from the first page; pagination is not required to compute totals.
 - The special agent prints a new section `<<<fortigate_cves:sep(0)>>>` consumed by the `FortiGate CVEs` check.
+
+CLI tips (testing with special characters in passwords)
+- Use single quotes around `--opencve-pass` in bash/zsh, or prefer:
+  - `--opencve-pass-file /path/secret.txt` (file contains only the password)
+  - `--opencve-pass-env OPENCVE_PASS` (read from environment variable)

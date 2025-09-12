@@ -191,6 +191,10 @@ def _parameter_form():
                                 prefill=DefaultValue(5),
                             ),
                         ),
+                        "ssl_verify": DictElement(
+                            required=False,
+                            parameter_form=enabled_choice(),
+                        ),
                     },
                 ),
             ),

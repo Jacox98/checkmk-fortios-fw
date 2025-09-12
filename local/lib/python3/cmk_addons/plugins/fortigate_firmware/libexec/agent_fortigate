@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 import sys
+import os
 import json
+import base64
 import requests
 import argparse
 from urllib3.exceptions import InsecureRequestWarning
@@ -38,6 +40,8 @@ def main():
                         help="OpenCVE base URL (self-hostable)")
     parser.add_argument("--opencve-user", dest="opencve_user", default=None, help="OpenCVE username")
     parser.add_argument("--opencve-pass", dest="opencve_pass", default=None, help="OpenCVE password")
+    parser.add_argument("--opencve-pass-file", dest="opencve_pass_file", default=None, help="Read OpenCVE password from file")
+    parser.add_argument("--opencve-pass-env", dest="opencve_pass_env", default=None, help="Read OpenCVE password from environment variable name")
     parser.add_argument("--opencve-vendor", dest="opencve_vendor", default=None, help="Product vendor name")
     parser.add_argument("--opencve-product", dest="opencve_product", default=None, help="Product name")
     parser.add_argument("--opencve-conn-timeout", dest="opencve_conn_timeout", type=int, default=20,
@@ -48,6 +52,8 @@ def main():
                         help=" WARN when total CVEs >= this value")
     parser.add_argument("--opencve-crit-threshold", dest="opencve_crit_threshold", type=int, default=5,
                         help=" CRIT when total CVEs >= this value")
+    parser.add_argument("--opencve-no-verify", dest="opencve_no_verify", action="store_true", default=False,
+                        help="Disable SSL verification for OpenCVE requests (self-hosted with self-signed certs)")
     
     args = parser.parse_args()
     
@@ -170,21 +176,35 @@ def main():
         try:
             ocve_base = args.opencve_base_url.rstrip("/")
             ocve_url = f"{ocve_base}/api/vendors/{args.opencve_vendor}/products/{args.opencve_product}/cve"
+            # Resolve password precedence: --opencve-pass > --opencve-pass-file > --opencve-pass-env
+            ocve_user = args.opencve_user or None
+            ocve_pass = args.opencve_pass
+            if ocve_pass is None and args.opencve_pass_file:
+                try:
+                    with open(args.opencve_pass_file, "r", encoding="utf-8") as fh:
+                        ocve_pass = fh.read().strip()
+                except Exception as exc:
+                    _print_opencve_error(exc, "Failed to read password file")
+                    ocve_pass = None
+            if ocve_pass is None and args.opencve_pass_env:
+                ocve_pass = os.environ.get(args.opencve_pass_env)
 
-            auth: Optional[tuple[str, str]] = None
-            if args.opencve_user:
-                auth = (args.opencve_user, args.opencve_pass or "")
+            # Build headers, include explicit Basic Authorization like curl
+            headers = {
+                "Accept": "application/json",
+                "User-Agent": "checkmk-fortios-fw/1.0 (+OpenCVE integration)",
+            }
+            if ocve_user is not None:
+                cred = f"{ocve_user}:{ocve_pass or ''}".encode("utf-8")
+                b64 = base64.b64encode(cred).decode("ascii")
+                headers["Authorization"] = f"Basic {b64}"
 
             # One request is enough to get the total count; also collect first page CVE IDs
             resp = requests.get(
                 ocve_url,
-                auth=auth,
-                headers={
-                    "Accept": "application/json",
-                    "User-Agent": "checkmk-fortios-fw/1.0 (+OpenCVE integration)",
-                },
+                headers=headers,
                 timeout=args.opencve_conn_timeout,
-                verify=False,
+                verify=not bool(args.opencve_no_verify),
             )
             resp.raise_for_status()
             data = resp.json()
