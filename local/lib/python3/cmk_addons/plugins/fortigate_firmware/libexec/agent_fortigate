@@ -88,17 +88,29 @@ def main():
                 short = "Failed to connect"
         elif isinstance(exc, req_exc.HTTPError):
             error_type = "http"
-            short = f"HTTP error: {getattr(exc.response, 'status_code', 'unknown')}"
+            status = getattr(exc.response, 'status_code', 'unknown')
+            short = f"HTTP error: {status}"
         else:
             short = "Request failed"
 
-        return {
+        payload: Dict[str, Any] = {
             "status": "error",
             "error": error_type,
             "message": short,
             "endpoint": endpoint,
             "detail": msg,
         }
+        # Attach HTTP response details if available
+        try:
+            if isinstance(exc, req_exc.HTTPError) and exc.response is not None:
+                payload["http_status"] = getattr(exc.response, 'status_code', None)
+                payload["reason"] = getattr(exc.response, 'reason', None)
+                body = exc.response.text or ""
+                if body:
+                    payload["response_snippet"] = body[:400]
+        except Exception:
+            pass
+        return payload
 
     # Ottieni informazioni sistema
     try:
@@ -167,7 +179,10 @@ def main():
             resp = requests.get(
                 ocve_url,
                 auth=auth,
-                headers={"Accept": "application/json"},
+                headers={
+                    "Accept": "application/json",
+                    "User-Agent": "checkmk-fortios-fw/1.0 (+OpenCVE integration)",
+                },
                 timeout=args.opencve_conn_timeout,
                 verify=False,
             )
@@ -187,6 +202,7 @@ def main():
                 "status": "success",
                 "vendor": args.opencve_vendor,
                 "product": args.opencve_product,
+                "url": ocve_url,
                 "count": count,
                 "sample_ids": sample_ids,
                 "config": {
