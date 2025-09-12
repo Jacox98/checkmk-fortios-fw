@@ -110,6 +110,78 @@ def parse_fortigate_firmware(string_table):
     except (json.JSONDecodeError, ValueError, TypeError):
         return {"error": "JSON parse failed"}
 
+# =============================================================================
+# FORTIGATE CVES (OpenCVE)
+# =============================================================================
+
+def parse_fortigate_cves(string_table):
+    """Parse fortigate_cves section (OpenCVE product CVE count)"""
+    if not string_table:
+        return None
+    try:
+        flatlist = list(itertools.chain.from_iterable(string_table))
+        json_str = " ".join(flatlist)
+        data = json.loads(json_str)
+        return data
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return {"error": "JSON parse failed"}
+
+def discover_fortigate_cves(section):
+    """Discovery for FortiGate CVEs"""
+    if section:
+        yield Service()
+
+def check_fortigate_cves(section):
+    """Check: evaluate CVE count against thresholds"""
+    if not section:
+        yield Result(state=State.UNKNOWN, summary="No CVE data received")
+        return
+
+    if "error" in section or section.get("status") == "error":
+        err_type = str(section.get("error", "")).lower()
+        msg = section.get("message") or section.get("error") or "Cannot retrieve CVE information"
+        detail = section.get("detail")
+        unknown_hints = ["no route to host", "failed to connect", "failed to establish", "dns", "resolution", "refused", "timed out", "timeout"]
+        is_unknown = err_type in ("connection", "timeout") or any(h in str(msg).lower() for h in unknown_hints) or any(h in str(detail).lower() for h in unknown_hints) if detail else False
+        state = State.UNKNOWN if is_unknown else State.CRIT
+        yield Result(state=state, summary=msg, details=(detail or None))
+        return
+
+    count = 0
+    try:
+        count = int(section.get("count", 0))
+    except Exception:
+        pass
+
+    cfg = section.get("config", {}) if isinstance(section.get("config"), dict) else {}
+    warn_th = cfg.get("warn_threshold", 1)
+    crit_th = cfg.get("crit_threshold", 5)
+    try:
+        warn_th = int(warn_th)
+        crit_th = int(crit_th)
+    except Exception:
+        warn_th, crit_th = 1, 5
+
+    vendor = section.get("vendor") or "vendor"
+    product = section.get("product") or "product"
+
+    # Determine state
+    if count >= crit_th:
+        state = State.CRIT
+    elif count >= warn_th:
+        state = State.WARN
+    else:
+        state = State.OK
+
+    sample_ids = section.get("sample_ids") or []
+    sample_str = ", ".join(sample_ids) if sample_ids else "none listed"
+
+    summary = f"{count} CVEs for {vendor}/{product}"
+    details = f"Sample CVEs: {sample_str}"
+
+    yield Result(state=state, summary=summary, details=details)
+    yield Metric("cves_total", count)
+
 def discover_fortigate_firmware(section):
     """Discovery function for Fortigate Firmware"""
     if section:
@@ -435,4 +507,16 @@ check_plugin_fortigate_firmware = CheckPlugin(
     service_name="FortiGate Firmware Updates",
     discovery_function=discover_fortigate_firmware,
     check_function=check_fortigate_firmware,
+)
+
+agent_section_fortigate_cves = AgentSection(
+    name="fortigate_cves",
+    parse_function=parse_fortigate_cves,
+)
+
+check_plugin_fortigate_cves = CheckPlugin(
+    name="fortigate_cves",
+    service_name="FortiGate CVEs",
+    discovery_function=discover_fortigate_cves,
+    check_function=check_fortigate_cves,
 )

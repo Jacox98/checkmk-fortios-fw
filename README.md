@@ -5,6 +5,7 @@ This repository provides a CheckMK extension for monitoring FortiGate firewalls 
 - **Special agent** (`libexec/agent_fortigate`) that queries the FortiGate API for system status and firmware details.
 - **Check plugins** (`agent_based/fortigate.py`) that evaluate the gathered data and expose services such as *FortiGate System* and *FortiGate Firmware Updates*.
 - **Configuration helpers** (`rulesets/special_agent.py` and `server_side_calls/special_agent.py`) to define rule sets and agent commands within CheckMK.
+ - Optional integration with **OpenCVE** to expose a *FortiGate CVEs* service that reports the number of CVEs for a given vendor/product.
 
 ## Installation
 
@@ -50,3 +51,18 @@ pytest
 ```
 
 Contributions are welcome.
+### OpenCVE (optional)
+
+Enable the nested "OpenCVE Integration" in the same special agent rule to add a service that counts CVEs for a product via OpenCVE's API.
+
+- `enabled`: turn the integration on
+- `base_url`: your OpenCVE instance (default `https://app.opencve.io`)
+- `username` / `password`: Basic Auth credentials (your instance may require them)
+- `vendor` and `product`: names used by OpenCVE (e.g. `fortinet` / `fortios`)
+- `timeout`: request timeout (default 20s)
+- `list_limit`: how many CVE IDs to show in details (default 10)
+- `warn_threshold` / `crit_threshold`: state thresholds on total CVE count
+
+Notes:
+- The integration requests `/api/vendors/<vendor>/products/<product>/cve` and uses the `count` field from the first page; pagination is not required to compute totals.
+- The special agent prints a new section `<<<fortigate_cves:sep(0)>>>` consumed by the `FortiGate CVEs` check.

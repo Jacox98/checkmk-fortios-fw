@@ -30,6 +30,24 @@ def main():
         action="store_false",
         help="Do not consider branch change critical",
     )
+
+    # OpenCVE integration options
+    parser.add_argument("--opencve-enabled", dest="opencve_enabled", action="store_true", default=False,
+                        help="Enable OpenCVE lookup for product CVEs")
+    parser.add_argument("--opencve-base-url", dest="opencve_base_url", default="https://app.opencve.io",
+                        help="OpenCVE base URL (self-hostable)")
+    parser.add_argument("--opencve-user", dest="opencve_user", default=None, help="OpenCVE username")
+    parser.add_argument("--opencve-pass", dest="opencve_pass", default=None, help="OpenCVE password")
+    parser.add_argument("--opencve-vendor", dest="opencve_vendor", default=None, help="Product vendor name")
+    parser.add_argument("--opencve-product", dest="opencve_product", default=None, help="Product name")
+    parser.add_argument("--opencve-conn-timeout", dest="opencve_conn_timeout", type=int, default=20,
+                        help="Timeout in seconds for OpenCVE requests")
+    parser.add_argument("--opencve-list-limit", dest="opencve_list_limit", type=int, default=10,
+                        help="Max number of CVE IDs to include from first page")
+    parser.add_argument("--opencve-warn-threshold", dest="opencve_warn_threshold", type=int, default=1,
+                        help=" WARN when total CVEs >= this value")
+    parser.add_argument("--opencve-crit-threshold", dest="opencve_crit_threshold", type=int, default=5,
+                        help=" CRIT when total CVEs >= this value")
     
     args = parser.parse_args()
     
@@ -125,6 +143,63 @@ def main():
     except Exception as e:
         print("<<<fortigate_firmware:sep(0)>>>")
         print(json.dumps(_error_payload(e, "/monitor/system/firmware")))
+
+    # ==============================================
+    # OpenCVE product CVEs
+    # ==============================================
+    def _print_opencve_error(exc: Exception, detail_msg: str = ""):
+        print("<<<fortigate_cves:sep(0)>>>")
+        payload = _error_payload(exc, "/api/vendors/<vendor>/products/<product>/cve")
+        if detail_msg:
+            payload["detail"] = f"{payload.get('detail', '')} | {detail_msg}".strip()
+        print(json.dumps(payload))
+
+    if args.opencve_enabled and args.opencve_vendor and args.opencve_product:
+        try:
+            ocve_base = args.opencve_base_url.rstrip("/")
+            ocve_url = f"{ocve_base}/api/vendors/{args.opencve_vendor}/products/{args.opencve_product}/cve"
+
+            auth: Optional[tuple[str, str]] = None
+            if args.opencve_user:
+                auth = (args.opencve_user, args.opencve_pass or "")
+
+            # One request is enough to get the total count; also collect first page CVE IDs
+            resp = requests.get(
+                ocve_url,
+                auth=auth,
+                headers={"Accept": "application/json"},
+                timeout=args.opencve_conn_timeout,
+                verify=False,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+            count = int(data.get("count", 0)) if isinstance(data, dict) else 0
+            results = data.get("results", []) if isinstance(data, dict) else []
+            list_limit = max(0, int(args.opencve_list_limit or 0))
+            sample_ids = [
+                (item.get("cve_id") or item.get("id") or "")
+                for item in results
+            ]
+            sample_ids = [c for c in sample_ids if c][:list_limit]
+
+            out = {
+                "status": "success",
+                "vendor": args.opencve_vendor,
+                "product": args.opencve_product,
+                "count": count,
+                "sample_ids": sample_ids,
+                "config": {
+                    "warn_threshold": int(args.opencve_warn_threshold),
+                    "crit_threshold": int(args.opencve_crit_threshold),
+                },
+            }
+
+            print("<<<fortigate_cves:sep(0)>>>")
+            print(json.dumps(out))
+
+        except Exception as e:
+            _print_opencve_error(e)
 
 if __name__ == "__main__":
     main()

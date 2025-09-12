@@ -11,6 +11,20 @@ from cmk.rulesets.v1.form_specs import (
     migrate_to_password,
 )
 try:
+    from cmk.rulesets.v1.form_specs import String  # type: ignore
+    def string_field(title: str, help_text: str, default: str | None = None, required: bool = False):
+        kwargs = {"title": Title(title), "help_text": Help(help_text)}
+        if default is not None:
+            kwargs["prefill"] = DefaultValue(default)
+        return String(**kwargs)
+except Exception:
+    # Fallback: use Password field as a generic text input if String is unavailable
+    def string_field(title: str, help_text: str, default: str | None = None, required: bool = False):  # type: ignore
+        kwargs = {"title": Title(title), "help_text": Help(help_text)}
+        if default is not None:
+            kwargs["prefill"] = DefaultValue(default)
+        return Password(**kwargs)
+try:
     from cmk.rulesets.v1.form_specs import SingleChoice, SingleChoiceElement  # type: ignore
     def branch_choice():
         return SingleChoice(
@@ -36,6 +50,23 @@ except Exception:
             prefill=DefaultValue(True),
         )
 from cmk.rulesets.v1.rule_specs import SpecialAgent, Topic
+
+# Simple boolean for OpenCVE enable/disable
+try:
+    from cmk.rulesets.v1.form_specs import BooleanChoice as _BoolChoice  # type: ignore
+    def enabled_choice():
+        return _BoolChoice(
+            title=Title("Enable OpenCVE"),
+            help_text=Help("Enable querying OpenCVE for product CVEs."),
+            prefill=DefaultValue(False),
+        )
+except Exception:
+    def enabled_choice():  # type: ignore
+        return Integer(
+            title=Title("Enable OpenCVE"),
+            help_text=Help("Set to 1 to enable, 0 to disable."),
+            prefill=DefaultValue(0),
+        )
 
 
 def _parameter_form():
@@ -75,6 +106,92 @@ def _parameter_form():
                     title=Title("Connection timeout (s)"),
                     help_text=Help("Timeout in seconds for API requests (default 30)."),
                     prefill=DefaultValue(30),
+                ),
+            ),
+            # OpenCVE nested configuration
+            "opencve": DictElement(
+                required=False,
+                parameter_form=Dictionary(
+                    title=Title("OpenCVE Integration"),
+                    help_text=Help(
+                        "Optionally query OpenCVE for the number of CVEs associated with a vendor/product.\n"
+                        "Supports self-hosted OpenCVE via configurable base URL and Basic Auth."
+                    ),
+                    elements={
+                        "enabled": DictElement(
+                            required=False,
+                            parameter_form=enabled_choice(),
+                        ),
+                        "base_url": DictElement(
+                            required=False,
+                            parameter_form=string_field(
+                                "OpenCVE base URL",
+                                "Base URL of OpenCVE instance (default https://app.opencve.io).",
+                                default="https://app.opencve.io",
+                            ),
+                        ),
+                        "username": DictElement(
+                            required=False,
+                            parameter_form=string_field(
+                                "OpenCVE username",
+                                "Username for Basic Auth (leave empty for public access if enabled).",
+                            ),
+                        ),
+                        "password": DictElement(
+                            required=False,
+                            parameter_form=Password(
+                                title=Title("OpenCVE password"),
+                                help_text=Help("Password for Basic Auth (if required by your instance)."),
+                                migrate=migrate_to_password,
+                            ),
+                        ),
+                        "vendor": DictElement(
+                            required=False,
+                            parameter_form=string_field(
+                                "Product vendor",
+                                "OpenCVE vendor name (e.g. 'fortinet').",
+                            ),
+                        ),
+                        "product": DictElement(
+                            required=False,
+                            parameter_form=string_field(
+                                "Product name",
+                                "OpenCVE product name (e.g. 'fortios').",
+                            ),
+                        ),
+                        "timeout": DictElement(
+                            required=False,
+                            parameter_form=Integer(
+                                title=Title("OpenCVE timeout (s)"),
+                                help_text=Help("Timeout in seconds for OpenCVE requests (default 20)."),
+                                prefill=DefaultValue(20),
+                            ),
+                        ),
+                        "list_limit": DictElement(
+                            required=False,
+                            parameter_form=Integer(
+                                title=Title("Max CVE IDs in details"),
+                                help_text=Help("How many CVE IDs to show from first page (default 10)."),
+                                prefill=DefaultValue(10),
+                            ),
+                        ),
+                        "warn_threshold": DictElement(
+                            required=False,
+                            parameter_form=Integer(
+                                title=Title("WARN at CVE count >="),
+                                help_text=Help("Set to 0 to disable WARN threshold."),
+                                prefill=DefaultValue(1),
+                            ),
+                        ),
+                        "crit_threshold": DictElement(
+                            required=False,
+                            parameter_form=Integer(
+                                title=Title("CRIT at CVE count >="),
+                                help_text=Help("Set to a high value to reduce noise."),
+                                prefill=DefaultValue(5),
+                            ),
+                        ),
+                    },
                 ),
             ),
         },
