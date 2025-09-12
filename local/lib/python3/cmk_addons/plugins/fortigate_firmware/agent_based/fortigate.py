@@ -144,7 +144,25 @@ def check_fortigate_cves(section):
         unknown_hints = ["no route to host", "failed to connect", "failed to establish", "dns", "resolution", "refused", "timed out", "timeout"]
         is_unknown = err_type in ("connection", "timeout") or any(h in str(msg).lower() for h in unknown_hints) or any(h in str(detail).lower() for h in unknown_hints) if detail else False
         state = State.UNKNOWN if is_unknown else State.CRIT
-        yield Result(state=state, summary=msg, details=(detail or None))
+
+        # Enrich details with diagnostic fields from special agent
+        details_lines = []
+        if detail:
+            details_lines.append(str(detail))
+        url = section.get("url")
+        if url:
+            details_lines.append(f"URL: {url}")
+        http_status = section.get("http_status")
+        if http_status is not None:
+            details_lines.append(f"HTTP status: {http_status}")
+        reason = section.get("reason")
+        if reason:
+            details_lines.append(f"Reason: {reason}")
+        snippet = section.get("response_snippet")
+        if snippet:
+            details_lines.append(f"Response: {snippet}")
+
+        yield Result(state=state, summary=msg, details=("\n".join(details_lines) if details_lines else None))
         return
 
     count = 0
