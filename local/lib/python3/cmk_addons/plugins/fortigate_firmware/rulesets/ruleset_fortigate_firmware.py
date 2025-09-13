@@ -60,24 +60,12 @@ try:
             help_text=Help("Enable querying OpenCVE for product CVEs."),
             prefill=DefaultValue(False),
         )
-    def verify_choice():
-        return _BoolChoice(
-            title=Title("Verify TLS certificates"),
-            help_text=Help("Enable certificate verification for OpenCVE requests."),
-            prefill=DefaultValue(True),
-        )
 except Exception:
     def enabled_choice():  # type: ignore
         return Integer(
             title=Title("Enable OpenCVE"),
             help_text=Help("Set to 1 to enable, 0 to disable."),
             prefill=DefaultValue(0),
-        )
-    def verify_choice():  # type: ignore
-        return Integer(
-            title=Title("Verify TLS certificates"),
-            help_text=Help("Set to 1 to verify, 0 to disable verification."),
-            prefill=DefaultValue(1),
         )
 
 
@@ -205,10 +193,7 @@ def _parameter_form():
                                 prefill=DefaultValue(5),
                             ),
                         ),
-                        "ssl_verify": DictElement(
-                            required=False,
-                            parameter_form=verify_choice(),
-                        ),
+                        # TLS verification is always enabled by default.
                     },
                 ),
             ),

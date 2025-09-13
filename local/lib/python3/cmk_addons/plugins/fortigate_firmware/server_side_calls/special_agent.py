@@ -42,7 +42,6 @@ def _agent_arguments(params, host_config):
         list_limit = ocve.get("list_limit") or 10
         warn_th = ocve.get("warn_threshold") or 1
         crit_th = ocve.get("crit_threshold") or 5
-        ssl_verify = ocve.get("ssl_verify")
 
         args.extend(["--opencve-base-url", str(base_url)])
         if username:
@@ -57,8 +56,7 @@ def _agent_arguments(params, host_config):
         args.extend(["--opencve-list-limit", str(int(list_limit))])
         args.extend(["--opencve-warn-threshold", str(int(warn_th))])
         args.extend(["--opencve-crit-threshold", str(int(crit_th))])
-        if ssl_verify is not None and not bool(ssl_verify):
-            args.append("--opencve-no-verify")
+        # TLS verification remains enabled by default; no UI toggle.
 
     yield SpecialAgentCommand(command_arguments=args)
 

@@ -55,7 +55,7 @@ Enable the nested "OpenCVE Integration" in the same special agent rule to add a 
 - `timeout`: request timeout (default 20s)
 - `list_limit`: how many CVE IDs to show in details (default 10)
 - `warn_threshold` / `crit_threshold`: state thresholds on total CVE count
-- `ssl_verify`: enable/disable TLS verification for self‑hosted instances
+  (TLS certificate verification is always enabled by default.)
 
 Technical details:
 - The integration calls `/api/vendors/<vendor>/products/<product>/cve` and uses the `count` field from the first page; pagination is not required to compute totals.
