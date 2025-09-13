@@ -51,7 +51,7 @@ Enable the nested "OpenCVE Integration" in the same special agent rule to add a 
 - `enabled`: turn the integration on
 - `base_url`: your OpenCVE instance (default `https://app.opencve.io`)
 - `username` / `password`: Basic Auth credentials (your instance may require them)
-- `vendor` / `product`: names used by OpenCVE (e.g., `fortinet` / `fortios`)
+- `vendor` / `product`: names used by OpenCVE (defaults: `fortinet` / `fortios`)
 - `timeout`: request timeout (default 20s)
 - `list_limit`: how many CVE IDs to show in details (default 10)
 - `warn_threshold` / `crit_threshold`: state thresholds on total CVE count
@@ -62,9 +62,7 @@ Technical details:
 - The special agent prints a new section `<<<fortigate_cves:sep(0)>>>` consumed by the "FortiGate CVEs" check.
 
 CLI tips (passwords with special characters):
-- Use single quotes around `--opencve-pass` in bash/zsh, or prefer:
-  - `--opencve-pass-file /path/secret.txt` (file contains only the password)
-  - `--opencve-pass-env OPENCVE_PASS` (read from environment variable)
+- Use single quotes around `--opencve-pass` in bash/zsh when testing the agent manually.
 
 ## Development
 
