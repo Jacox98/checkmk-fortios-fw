@@ -39,10 +39,6 @@ Extension for CheckMK to monitor FortiGate firewalls via the REST API.
 
 ## Development
 
-The repository currently ships without automated tests. To verify your environment you can run:
-
-```bash
-pytest
-```
+The repository currently ships without automated tests.
 
 Contributions welcome.
