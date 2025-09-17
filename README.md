@@ -4,10 +4,10 @@ Extension for CheckMK to monitor FortiGate firewalls via the REST API.
 
 ## Package Contents
 
-- Special agent: libexec/agent_fortigate - queries the FortiGate API for system status and firmware details.
-- Check plugin: gent_based/fortigate.py - evaluates collected data and exposes services like "FortiGate System" and "FortiGate Firmware Updates".
-- Configuration helpers: ulesets/special_agent.py and server_side_calls/special_agent.py - define rulesets and server-side commands in CheckMK.
-- Check manuals: local/lib/python3/cmk_addons/plugins/fortigate_firmware/checkman/.
+- Special agent: `libexec/agent_fortigate` – queries the FortiGate API for system status and firmware details.
+- Check plugin: `agent_based/fortigate.py` – evaluates collected data and exposes services like "FortiGate System" and "FortiGate Firmware Updates".
+- Configuration helpers: `rulesets/special_agent.py` and `server_side_calls/special_agent.py` – define rulesets and server-side commands in CheckMK.
+- Check manuals: `local/lib/python3/cmk_addons/plugins/fortigate_firmware/checkman/`.
 
 ## Installation
 
@@ -17,8 +17,8 @@ Extension for CheckMK to monitor FortiGate firewalls via the REST API.
 ## Configuration
 
 - Special agent rule: Fortigate Firmware
-  - Parameters: pi_key (required), port, 	imeout.
-  - critical_on_branch_change (default: true)
+  - Parameters: `api_key` (required), `port`, `timeout`.
+  - `critical_on_branch_change` (default: true)
     - Enabled: a jump to a newer FortiOS branch (e.g., 7.4 -> 7.6) can contribute to a CRIT state depending on thresholds.
     - Disabled: branch changes are reported as WARN with an explicit note; CRIT triggers only when you are significantly behind within the same branch or multiple major versions.
 
@@ -26,7 +26,7 @@ Extension for CheckMK to monitor FortiGate firewalls via the REST API.
 
 - Retrieves system information: version, build, model, and serial number.
 - Detects firmware update availability and highlights critical maintenance gaps (configurable branch-change severity).
-- Filters firmware images by platform ID and the can_upgrade flag so only installable builds are counted.
+- Filters firmware images by platform ID and the `can_upgrade` flag so only installable builds are counted.
 - Provides metrics to trend the installed version and number of pending updates.
 
 ## Error Handling
@@ -39,8 +39,8 @@ Extension for CheckMK to monitor FortiGate firewalls via the REST API.
 
 The repository currently ships without automated tests. To verify your environment you can run:
 
-`ash
+```bash
 pytest
-`
+```
 
 Contributions welcome.
