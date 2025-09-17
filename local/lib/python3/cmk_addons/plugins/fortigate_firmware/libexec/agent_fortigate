@@ -3,11 +3,10 @@
 import sys
 import os
 import json
-import base64
 import requests
 import argparse
 from urllib3.exceptions import InsecureRequestWarning
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from requests import exceptions as req_exc
 
 # Disabilita avvisi SSL
@@ -33,28 +32,6 @@ def main():
         help="Do not consider branch change critical",
     )
 
-    # OpenCVE integration options
-    parser.add_argument("--opencve-enabled", dest="opencve_enabled", action="store_true", default=False,
-                        help="Enable OpenCVE lookup for product CVEs")
-    parser.add_argument("--opencve-base-url", dest="opencve_base_url", default="https://app.opencve.io",
-                        help="OpenCVE base URL (self-hostable)")
-    parser.add_argument("--opencve-user", dest="opencve_user", default=None, help="OpenCVE username")
-    parser.add_argument("--opencve-pass", dest="opencve_pass", default=None, help="OpenCVE password (from ruleset)")
-    parser.add_argument("--opencve-vendor", dest="opencve_vendor", default=None, help="Product vendor name")
-    parser.add_argument("--opencve-product", dest="opencve_product", default=None, help="Product name")
-    parser.add_argument("--opencve-conn-timeout", dest="opencve_conn_timeout", type=int, default=20,
-                        help="Timeout in seconds for OpenCVE requests")
-    parser.add_argument("--opencve-list-limit", dest="opencve_list_limit", type=int, default=10,
-                        help="Max number of CVE IDs to include from first page")
-    parser.add_argument("--opencve-warn-threshold", dest="opencve_warn_threshold", type=int, default=1,
-                        help=" WARN when total CVEs >= this value")
-    parser.add_argument("--opencve-crit-threshold", dest="opencve_crit_threshold", type=int, default=5,
-                        help=" CRIT when total CVEs >= this value")
-    parser.add_argument("--opencve-no-verify", dest="opencve_no_verify", action="store_true", default=False,
-                        help="Disable SSL verification for OpenCVE requests (self-hosted with self-signed certs)")
-    parser.add_argument("--opencve-debug", dest="opencve_debug", action="store_true", default=False,
-                        help="Print OpenCVE debug info to stderr (status and small body snippet)")
-    
     args = parser.parse_args()
     
     base_url = f"https://{args.hostname}:{args.port}/api/v2"
@@ -194,99 +171,6 @@ def main():
     except Exception as e:
         print("<<<fortigate_firmware:sep(0)>>>")
         print(json.dumps(_error_payload(e, "/monitor/system/firmware")))
-
-    # ==============================================
-    # OpenCVE product CVEs
-    # ==============================================
-    def _print_opencve_error(exc: Exception, detail_msg: str = "", url: Optional[str] = None):
-        print("<<<fortigate_cves:sep(0)>>>")
-        payload = _error_payload(exc, "/api/vendors/<vendor>/products/<product>/cve")
-        if detail_msg:
-            payload["detail"] = f"{payload.get('detail', '')} | {detail_msg}".strip()
-        if url:
-            payload["url"] = url
-        print(json.dumps(payload))
-
-    if args.opencve_enabled and args.opencve_vendor and args.opencve_product:
-        try:
-            # Normalize API base: accept base URLs with or without trailing '/api'
-            ocve_base_raw = (args.opencve_base_url or "").strip()
-            ocve_base = ocve_base_raw.rstrip("/")
-            api_base = ocve_base if ocve_base.endswith("/api") else f"{ocve_base}/api"
-            ocve_url = f"{api_base}/vendors/{args.opencve_vendor}/products/{args.opencve_product}/cve"
-            # Password must come from ruleset via --opencve-pass
-            ocve_user = args.opencve_user or None
-            ocve_pass = args.opencve_pass
-
-            # Basic sanity for required auth parameters
-            if not ocve_user or (ocve_pass is None):
-                raise ValueError(
-                    "Missing OpenCVE username or password. Ensure the ruleset provides --opencve-user and --opencve-pass."
-                )
-
-            # Build headers, include explicit Basic Authorization like curl
-            headers = {
-                "Accept": "application/json",
-                "User-Agent": "checkmk-fortios-fw/1.0 (+OpenCVE integration)",
-            }
-            if ocve_user is not None:
-                cred = f"{ocve_user}:{ocve_pass or ''}".encode("utf-8")
-                b64 = base64.b64encode(cred).decode("ascii")
-                headers["Authorization"] = f"Basic {b64}"
-
-            # Optional quick test to distinguish auth vs permission (prints to stderr)
-            if args.opencve_debug:
-                try:
-                    test_url = f"{api_base}/cve"
-                    tr = requests.get(
-                        test_url,
-                        headers=headers,
-                        timeout=args.opencve_conn_timeout,
-                        verify=not bool(args.opencve_no_verify),
-                    )
-                    sys.stderr.write(
-                        f"OpenCVE DEBUG test {test_url} -> {tr.status_code} {tr.reason}\n{(tr.text or '')[:200]}\n"
-                    )
-                except Exception as _:
-                    pass
-
-            # One request is enough to get the total count; also collect first page CVE IDs
-            resp = requests.get(
-                ocve_url,
-                headers=headers,
-                timeout=args.opencve_conn_timeout,
-                verify=not bool(args.opencve_no_verify),
-            )
-            resp.raise_for_status()
-            data = resp.json()
-
-            count = int(data.get("count", 0)) if isinstance(data, dict) else 0
-            results = data.get("results", []) if isinstance(data, dict) else []
-            list_limit = max(0, int(args.opencve_list_limit or 0))
-            sample_ids = [
-                (item.get("cve_id") or item.get("id") or "")
-                for item in results
-            ]
-            sample_ids = [c for c in sample_ids if c][:list_limit]
-
-            out = {
-                "status": "success",
-                "vendor": args.opencve_vendor,
-                "product": args.opencve_product,
-                "url": ocve_url,
-                "count": count,
-                "sample_ids": sample_ids,
-                "config": {
-                    "warn_threshold": int(args.opencve_warn_threshold),
-                    "crit_threshold": int(args.opencve_crit_threshold),
-                },
-            }
-
-            print("<<<fortigate_cves:sep(0)>>>")
-            print(json.dumps(out))
-
-        except Exception as e:
-            _print_opencve_error(e, url=locals().get("ocve_url"))
 
 if __name__ == "__main__":
     main()
