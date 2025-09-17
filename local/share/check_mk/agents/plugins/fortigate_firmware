@@ -118,6 +118,39 @@ def main():
             pass
         return payload
 
+    def _normalize_firmware_payload(payload: Any) -> Any:
+        """FortiOS 7.6 returns firmware data in a flatter schema.
+
+        Older releases wrapped everything inside "results" while newer ones expose
+        "current"/"available" at the top level. Unify the shape so that the
+        agent-based check keeps working regardless of the appliance version.
+        """
+
+        if not isinstance(payload, dict):
+            return payload
+
+        normalized: Dict[str, Any] = dict(payload)
+        existing_results = normalized.get("results")
+        results: Dict[str, Any] = dict(existing_results) if isinstance(existing_results, dict) else {}
+
+        for key in ("current", "running", "installed", "active"):
+            current_obj = normalized.get(key)
+            if isinstance(current_obj, dict) and "current" not in results:
+                results["current"] = current_obj
+                break
+
+        for key in ("available", "images", "upgrades", "upgrade_images", "firmwares"):
+            available_list = normalized.get(key)
+            if isinstance(available_list, list) and "available" not in results:
+                results["available"] = available_list
+                break
+
+        if results:
+            normalized["results"] = results
+
+        normalized.setdefault("status", "success")
+        return normalized
+
     # Ottieni informazioni sistema
     try:
         response = requests.get(
@@ -145,7 +178,7 @@ def main():
             timeout=args.timeout,
         )
         response.raise_for_status()
-        firmware_data = response.json()
+        firmware_data = _normalize_firmware_payload(response.json())
         # Inject monitoring configuration flag into payload for the check plugin
         try:
             if isinstance(firmware_data, dict):

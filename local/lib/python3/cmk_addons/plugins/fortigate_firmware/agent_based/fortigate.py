@@ -217,130 +217,167 @@ def check_fortigate_firmware(section):
         msg = section.get("message") or section.get("error") or "Cannot retrieve firmware information"
         detail = section.get("detail")
 
-        unknown_hints = ["no route to host", "failed to connect", "failed to establish", "dns", "resolution", "refused", "timed out", "timeout"]
-        is_unknown = err_type in ("connection", "timeout") or any(h in str(msg).lower() for h in unknown_hints) or any(h in str(detail).lower() for h in unknown_hints) if detail else False
+        unknown_hints = [
+            "no route to host",
+            "failed to connect",
+            "failed to establish",
+            "dns",
+            "resolution",
+            "refused",
+            "timed out",
+            "timeout",
+        ]
+        is_unknown = (
+            err_type in ("connection", "timeout")
+            or any(h in str(msg).lower() for h in unknown_hints)
+            or (detail and any(h in str(detail).lower() for h in unknown_hints))
+        )
         # For firmware, connection issues -> UNKNOWN, other errors -> WARN (non-service-impacting)
         state = State.UNKNOWN if is_unknown else State.WARN
 
         yield Result(state=state, summary=f"Cannot check updates: {msg}", details=(detail or None))
         return
 
-    if section.get("status") != "success":
+    status = section.get("status", "success")
+    if status != "success":
         yield Result(state=State.WARN, summary="Cannot retrieve firmware information")
         return
-    
-    results = section.get("results", {})
-    current_fw = results.get("current", {})
-    available_fw = results.get("available", [])
-    
-    current_version = current_fw.get("version", "Unknown")
-    current_build = current_fw.get("build", 0)
-    current_major = current_fw.get("major", 0)
-    current_minor = current_fw.get("minor", 0)
-    current_maturity = current_fw.get("maturity", "")
-    
+
+    results_raw = section.get("results")
+    results = dict(results_raw) if isinstance(results_raw, dict) else {}
+    if "current" not in results and isinstance(section.get("current"), dict):
+        results["current"] = section["current"]
+    if "available" not in results and isinstance(section.get("available"), list):
+        results["available"] = section["available"]
+
+    current_fw = results.get("current") if isinstance(results.get("current"), dict) else {}
+    available_raw = results.get("available") if isinstance(results.get("available"), list) else []
+
+    current_version = current_fw.get("version") or "Unknown"
+    current_build_value = current_fw.get("build")
+    current_build_str = str(current_build_value) if current_build_value not in (None, "") else "Unknown"
+    current_maturity = (current_fw.get("maturity") or "").upper()
+
+    def _to_int(value: Any) -> int:
+        try:
+            return int(str(value))
+        except (TypeError, ValueError):
+            return 0
+
+    def _version_tuple(fw: Dict[str, Any]) -> tuple[int, int, int, int]:
+        return (
+            _to_int(fw.get("major")),
+            _to_int(fw.get("minor")),
+            _to_int(fw.get("patch")),
+            _to_int(fw.get("build")),
+        )
+
+    def _platform_id(data: Dict[str, Any]) -> Optional[str]:
+        for key in ("platform-id", "platform_id", "platformId"):
+            value = data.get(key)
+            if value:
+                return str(value)
+        return None
+
+    current_major_int = _to_int(current_fw.get("major"))
+    current_minor_int = _to_int(current_fw.get("minor"))
+    current_build_int = _to_int(current_fw.get("build"))
+    current_tuple = _version_tuple(current_fw)
+
+    current_platform_id = _platform_id(current_fw)
+    available_fw = []
+    skipped_incompatible = 0
+    for fw in available_raw:
+        if not isinstance(fw, dict):
+            continue
+        if fw.get("can_upgrade") is False:
+            skipped_incompatible += 1
+            continue
+        if current_platform_id:
+            fw_platform = _platform_id(fw)
+            if fw_platform and fw_platform != current_platform_id:
+                skipped_incompatible += 1
+                continue
+        available_fw.append(fw)
+
     if not available_fw:
         yield Result(
-            state=State.OK, 
+            state=State.OK,
             summary=f"System is up to date: {current_version}",
-            details=f"Current: {current_version} build {current_build}"
+            details=f"Current: {current_version} build {current_build_str}",
         )
         yield Metric("updates_available", 0)
         return
-    
-    # Filter and categorize updates
-    try:
-        current_build_int = int(current_build)
-        current_major_int = int(current_major)
-        current_minor_int = int(current_minor)
-        
-        newer_updates = []
-        recommended_fw = None
-        highest_fw = None
-        security_updates = 0
-        
-        for fw in available_fw:
-            fw_build = int(fw.get("build", 0))
-            fw_major = int(fw.get("major", 0))
-            fw_minor = int(fw.get("minor", 0))
-            fw_maturity = fw.get("maturity", "")
-            
-            if fw_build > current_build_int:
-                newer_updates.append(fw)
-                
-                # Count potential security updates (maturity M typically means maintenance/security)
-                if fw_maturity == "M":
-                    security_updates += 1
-                
-                # Find recommended (next version in same minor series)
-                if (fw_major == current_major_int and 
-                    fw_minor == current_minor_int and 
-                    (recommended_fw is None or fw_build < int(recommended_fw.get("build", 99999)))):
-                    recommended_fw = fw
-                
-                # Find highest available version
-                if (highest_fw is None or 
-                    fw_major > int(highest_fw.get("major", 0)) or
-                    (fw_major == int(highest_fw.get("major", 0)) and fw_minor > int(highest_fw.get("minor", 0))) or
-                    (fw_major == int(highest_fw.get("major", 0)) and fw_minor == int(highest_fw.get("minor", 0)) and fw_build > int(highest_fw.get("build", 0)))):
-                    highest_fw = fw
-    
-    except (ValueError, TypeError):
-        # Fallback if version parsing fails
-        newer_updates = available_fw
-        recommended_fw = available_fw[0] if available_fw else None
-        highest_fw = available_fw[0] if available_fw else None
-        security_updates = 0
-    
+
+    available_fw.sort(key=_version_tuple)
+
+    newer_updates = []
+    recommended_fw = None
+    highest_fw = None
+    security_updates = 0
+
+    for fw in available_fw:
+        fw_tuple = _version_tuple(fw)
+        if fw_tuple <= current_tuple:
+            continue
+
+        newer_updates.append(fw)
+
+        if (fw.get("maturity") or "").upper() == "M":
+            security_updates += 1
+
+        fw_major = _to_int(fw.get("major"))
+        fw_minor = _to_int(fw.get("minor"))
+
+        if fw_major == current_major_int and fw_minor == current_minor_int:
+            if recommended_fw is None or fw_tuple < _version_tuple(recommended_fw):
+                recommended_fw = fw
+
+        if highest_fw is None or fw_tuple > _version_tuple(highest_fw):
+            highest_fw = fw
+
     if not newer_updates:
         yield Result(
             state=State.OK,
             summary=f"System is up to date: {current_version}",
-            details=f"Current: {current_version} build {current_build}"
+            details=f"Current: {current_version} build {current_build_str}",
         )
         yield Metric("updates_available", 0)
         return
-    
-    # Calculate gaps for CRITICAL logic
+
     update_count = len(newer_updates)
     builds_behind_latest = 0
     major_versions_behind = 0
     minor_versions_behind = 0
-    
+
     if highest_fw:
-        try:
-            high_build = int(highest_fw.get("build", 0))
-            high_major = int(highest_fw.get("major", 0))
-            high_minor = int(highest_fw.get("minor", 0))
-            
+        high_build = _to_int(highest_fw.get("build"))
+        if high_build > current_build_int:
             builds_behind_latest = high_build - current_build_int
-            
-            if high_major > current_major_int:
-                major_versions_behind = high_major - current_major_int
-            elif high_major == current_major_int and high_minor > current_minor_int:
-                minor_versions_behind = high_minor - current_minor_int
-        except (ValueError, TypeError):
-            pass
 
-    # Branch change available if newer major/minor exists
-    branch_change_available = (major_versions_behind > 0) or (minor_versions_behind > 0)
+        high_major = _to_int(highest_fw.get("major"))
+        high_minor = _to_int(highest_fw.get("minor"))
+        if high_major > current_major_int:
+            major_versions_behind = high_major - current_major_int
+        elif high_major == current_major_int and high_minor > current_minor_int:
+            minor_versions_behind = high_minor - current_minor_int
 
-    # Build enhanced summary
-    summary_parts = [f"Current: {current_version} build {current_build}"]
-    
-    if recommended_fw and recommended_fw != highest_fw:
+    branch_change_available = any(
+        (_to_int(fw.get("major")), _to_int(fw.get("minor")))
+        != (current_major_int, current_minor_int)
+        for fw in newer_updates
+    )
+
+    summary_parts = [f"Current: {current_version} build {current_build_str}"]
+    if recommended_fw and recommended_fw is not highest_fw:
         rec_version = recommended_fw.get("version", "Unknown")
         rec_build = recommended_fw.get("build", 0)
         summary_parts.append(f"Recommended: {rec_version} build {rec_build}")
-    
     if highest_fw:
         high_version = highest_fw.get("version", "Unknown")
         summary_parts.append(f"Highest available: {high_version}")
-    
-    summary = " → ".join(summary_parts)
-    
-    # CRITICAL logic with optional branch-change handling
-    # Prefer config passed via special agent payload; default to True
+    summary = " | ".join(summary_parts)
+
     consider_branch_change_critical = True
     try:
         consider_branch_change_critical = bool(
@@ -349,7 +386,6 @@ def check_fortigate_firmware(section):
     except Exception:
         consider_branch_change_critical = True
 
-    # Compute standard (all branches) criticality
     is_critical_all = False
     critical_reasons_all = []
     if update_count >= 30:
@@ -371,37 +407,25 @@ def check_fortigate_firmware(section):
         is_critical_all = True
         critical_reasons_all.append(f"Multiple minor versions behind ({minor_versions_behind} minor versions)")
 
-    # Compute criticality restricted to same minor branch
     def _same_branch_criticality():
         same_branch_updates = []
         same_branch_security = 0
         highest_same_branch = None
-        try:
-            for fw in available_fw:
-                fw_build = int(fw.get("build", 0))
-                fw_major = int(fw.get("major", 0))
-                fw_minor = int(fw.get("minor", 0))
-                if fw_major == current_major_int and fw_minor == current_minor_int:
-                    if fw_build > current_build_int:
-                        same_branch_updates.append(fw)
-                        if fw.get("maturity") == "M":
-                            same_branch_security += 1
-                    if (
-                        highest_same_branch is None
-                        or fw_build > int(highest_same_branch.get("build", 0))
-                    ):
-                        highest_same_branch = fw
-        except Exception:
-            same_branch_updates = []
-            same_branch_security = 0
-            highest_same_branch = None
+        for fw in newer_updates:
+            fw_major = _to_int(fw.get("major"))
+            fw_minor = _to_int(fw.get("minor"))
+            if fw_major == current_major_int and fw_minor == current_minor_int:
+                same_branch_updates.append(fw)
+                if (fw.get("maturity") or "").upper() == "M":
+                    same_branch_security += 1
+                if highest_same_branch is None or _version_tuple(fw) > _version_tuple(highest_same_branch):
+                    highest_same_branch = fw
 
         builds_behind_same = 0
         if highest_same_branch is not None:
-            try:
-                builds_behind_same = int(highest_same_branch.get("build", 0)) - current_build_int
-            except Exception:
-                builds_behind_same = 0
+            high_same_build = _to_int(highest_same_branch.get("build"))
+            if high_same_build > current_build_int:
+                builds_behind_same = high_same_build - current_build_int
 
         is_crit = False
         reasons = []
@@ -410,7 +434,7 @@ def check_fortigate_firmware(section):
             reasons.append(
                 f"Extremely outdated within branch ({len(same_branch_updates)} versions)"
             )
-        if major_versions_behind >= 2:  # still critical if far behind major
+        if major_versions_behind >= 2:
             is_crit = True
             reasons.append(f"Major version gap ({major_versions_behind} major versions behind)")
         if builds_behind_same >= 150:
@@ -431,38 +455,42 @@ def check_fortigate_firmware(section):
         critical_reasons = critical_reasons_all
     else:
         is_critical, critical_reasons = _same_branch_criticality()
-    
-    # Additional details
+
     details_parts = []
     if recommended_fw:
         rec_type = recommended_fw.get("release-type", "Unknown")
         rec_maturity = recommended_fw.get("maturity", "Unknown")
-        details_parts.append(f"Recommended update: {recommended_fw.get('version')} (Build {recommended_fw.get('build')}, {rec_type}, Maturity: {rec_maturity})")
-    
-    if highest_fw and highest_fw != recommended_fw:
+        details_parts.append(
+            f"Recommended update: {recommended_fw.get('version')} (Build {recommended_fw.get('build')}, {rec_type}, Maturity: {rec_maturity})"
+        )
+
+    if highest_fw and highest_fw is not recommended_fw:
         high_type = highest_fw.get("release-type", "Unknown")
-        high_maturity = highest_fw.get("maturity", "Unknown") 
-        details_parts.append(f"Latest version: {highest_fw.get('version')} (Build {highest_fw.get('build')}, {high_type}, Maturity: {high_maturity})")
-    
+        high_maturity = highest_fw.get("maturity", "Unknown")
+        details_parts.append(
+            f"Latest version: {highest_fw.get('version')} (Build {highest_fw.get('build')}, {high_type}, Maturity: {high_maturity})"
+        )
+
     details_parts.append(f"Total {update_count} newer versions available")
-    
+
     if security_updates > 0:
         details_parts.append(f"Security/maintenance updates: {security_updates}")
-    
+
+    if skipped_incompatible > 0:
+        details_parts.append(
+            f"Ignored {skipped_incompatible} incompatible images (can_upgrade=false or different platform)"
+        )
+
     if is_critical:
         details_parts.append(f"CRITICAL: {'; '.join(critical_reasons)}")
-    
-    # Determine final state and message
+
     if is_critical:
         state = State.CRIT
         status_prefix = "CRITICAL - System dangerously outdated"
     elif (not consider_branch_change_critical) and branch_change_available:
-        # Demote to WARN and clearly state branch change is not critical by rule
         state = State.WARN
         status_prefix = "Feature release available (branch change not critical)"
-        details_parts.append(
-            "Note: branch change is configured as non-critical"
-        )
+        details_parts.append("Note: branch change is configured as non-critical")
     elif update_count >= 15:
         state = State.WARN
         status_prefix = "System significantly outdated"
@@ -475,29 +503,26 @@ def check_fortigate_firmware(section):
     else:
         state = State.WARN
         status_prefix = "Updates available"
-    
+
     yield Result(
-        state=state, 
-        summary=f"{status_prefix} → {summary}",
-        details="\n".join(details_parts)
+        state=state,
+        summary=f"{status_prefix} | {summary}",
+        details="\n".join(details_parts),
     )
-    
+
     yield Metric("updates_available", update_count)
     yield Metric("security_updates", security_updates)
-    
-    # Additional metrics for monitoring trends
+
     if recommended_fw:
-        try:
-            rec_build_num = int(recommended_fw.get("build", 0))
+        rec_build_num = _to_int(recommended_fw.get("build"))
+        if rec_build_num > current_build_int:
             builds_behind_recommended = rec_build_num - current_build_int
-            yield Metric("builds_behind_recommended", max(0, builds_behind_recommended))
-        except (ValueError, TypeError):
-            pass
-    
+            yield Metric("builds_behind_recommended", builds_behind_recommended)
+
     if highest_fw:
-        yield Metric("builds_behind_latest", max(0, builds_behind_latest))
-        yield Metric("major_versions_behind", max(0, major_versions_behind))
-        yield Metric("minor_versions_behind", max(0, minor_versions_behind))
+        yield Metric("builds_behind_latest", builds_behind_latest)
+        yield Metric("major_versions_behind", major_versions_behind)
+        yield Metric("minor_versions_behind", minor_versions_behind)
 
 # =============================================================================
 # PLUGIN REGISTRATION

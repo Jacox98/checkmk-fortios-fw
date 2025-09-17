@@ -1,0 +1,14 @@
+title: FortiGate System Status
+agents: fortigate
+catalog: network/fortinet
+license: GPL
+distribution: check_mk
+description:
+ This check exposes summary information from FortiOS GET /monitor/system/status including firmware version, build, model name,
+ hostname, and serial number. Connection errors are mapped to UNKNOWN while authentication or HTTP errors raise CRIT.
+item:
+ This check has no item. One service is discovered per FortiGate host.
+group: System
+perfdata:
+ version_numeric: Numeric representation of the installed firmware version.
+ build_number: Build number of the installed firmware.
