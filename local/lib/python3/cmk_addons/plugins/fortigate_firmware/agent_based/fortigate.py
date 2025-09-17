@@ -189,6 +189,12 @@ def check_fortigate_firmware(section):
                 return str(value)
         return None
 
+    def _is_mature_fw(fw: Dict[str, Any]) -> bool:
+        maturity = fw.get("maturity")
+        if maturity is None:
+            return False
+        return str(maturity).strip().upper().startswith("M")
+
     current_major_int = _to_int(current_fw.get("major"))
     current_minor_int = _to_int(current_fw.get("minor"))
     current_build_int = _to_int(current_fw.get("build"))
@@ -225,6 +231,8 @@ def check_fortigate_firmware(section):
     recommended_fw = None
     highest_fw = None
     security_updates = 0
+    has_same_branch_updates = False
+    next_branch_updates = []
 
     for fw in available_fw:
         fw_tuple = _version_tuple(fw)
@@ -240,8 +248,11 @@ def check_fortigate_firmware(section):
         fw_minor = _to_int(fw.get("minor"))
 
         if fw_major == current_major_int and fw_minor == current_minor_int:
+            has_same_branch_updates = True
             if recommended_fw is None or fw_tuple < _version_tuple(recommended_fw):
                 recommended_fw = fw
+        else:
+            next_branch_updates.append(fw)
 
         if highest_fw is None or fw_tuple > _version_tuple(highest_fw):
             highest_fw = fw
@@ -272,11 +283,7 @@ def check_fortigate_firmware(section):
         elif high_major == current_major_int and high_minor > current_minor_int:
             minor_versions_behind = high_minor - current_minor_int
 
-    branch_change_available = any(
-        (_to_int(fw.get("major")), _to_int(fw.get("minor")))
-        != (current_major_int, current_minor_int)
-        for fw in newer_updates
-    )
+    branch_change_available = bool(next_branch_updates)
 
     summary_parts = [f"Current: {current_version} build {current_build_str}"]
     if recommended_fw and recommended_fw is not highest_fw:
@@ -288,13 +295,21 @@ def check_fortigate_firmware(section):
         summary_parts.append(f"Highest available: {high_version}")
     summary = " | ".join(summary_parts)
 
-    consider_branch_change_critical = True
-    try:
-        consider_branch_change_critical = bool(
-            section.get("config", {}).get("critical_on_branch_change", True)
-        )
-    except Exception:
-        consider_branch_change_critical = True
+    config = section.get("config", {})
+    if not isinstance(config, dict):
+        config = {}
+
+    crit_value = config.get("critical_on_branch_change", True)
+    if isinstance(crit_value, str):
+        consider_branch_change_critical = crit_value.lower() not in ("warn", "false", "no", "off", "0")
+    else:
+        consider_branch_change_critical = bool(crit_value)
+
+    ok_value = config.get("ok_if_unmatured_branch", False)
+    if isinstance(ok_value, str):
+        ok_if_unmatured_branch = ok_value.lower() in ("1", "true", "yes", "on")
+    else:
+        ok_if_unmatured_branch = bool(ok_value)
 
     is_critical_all = False
     critical_reasons_all = []
@@ -394,9 +409,19 @@ def check_fortigate_firmware(section):
     if is_critical:
         details_parts.append(f"CRITICAL: {'; '.join(critical_reasons)}")
 
+    should_force_ok = False
+    if ok_if_unmatured_branch and not is_critical:
+        if branch_change_available and not has_same_branch_updates:
+            if next_branch_updates and all(not _is_mature_fw(fw) for fw in next_branch_updates):
+                should_force_ok = True
+                details_parts.append("Override to OK: next-branch images are immature and allowed by configuration")
+
     if is_critical:
         state = State.CRIT
         status_prefix = "CRITICAL - System dangerously outdated"
+    elif should_force_ok:
+        state = State.OK
+        status_prefix = "Current branch up to date (next branch immature)"
     elif (not consider_branch_change_critical) and branch_change_available:
         state = State.WARN
         status_prefix = "Feature release available (branch change not critical)"
@@ -461,4 +486,5 @@ check_plugin_fortigate_firmware = CheckPlugin(
     discovery_function=discover_fortigate_firmware,
     check_function=check_fortigate_firmware,
 )
+
 

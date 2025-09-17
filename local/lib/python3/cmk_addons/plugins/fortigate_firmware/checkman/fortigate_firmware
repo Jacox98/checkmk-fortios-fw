@@ -11,6 +11,7 @@ item:
 group: Firmware
 parameters:
  Branch upgrades are controlled on the FortiGate special agent rule via the "Treat branch upgrades as critical" option.
+ The "OK when only immature branch upgrades exist" option keeps the service OK when the current branch is up to date and newer branches are not mature.
 perfdata:
  updates_available: Number of newer firmware images reported by the API.
  security_updates: Count of maintenance releases (maturity M) among the newer images.

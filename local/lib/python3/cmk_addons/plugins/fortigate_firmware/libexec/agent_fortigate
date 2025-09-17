@@ -31,6 +31,19 @@ def main():
         action="store_false",
         help="Do not consider branch change critical",
     )
+    parser.add_argument(
+        "--ok-if-unmatured-branch",
+        dest="ok_if_unmatured_branch",
+        action="store_true",
+        default=False,
+        help="Return OK when only immature branch upgrades exist",
+    )
+    parser.add_argument(
+        "--no-ok-if-unmatured-branch",
+        dest="ok_if_unmatured_branch",
+        action="store_false",
+        help="Disable OK override for immature branch upgrades",
+    )
 
     args = parser.parse_args()
     
@@ -160,7 +173,10 @@ def main():
         try:
             if isinstance(firmware_data, dict):
                 cfg = firmware_data.get("config", {}) if isinstance(firmware_data.get("config"), dict) else {}
-                cfg.update({"critical_on_branch_change": bool(args.branch_change_critical)})
+                cfg.update({
+                    "critical_on_branch_change": bool(args.branch_change_critical),
+                    "ok_if_unmatured_branch": bool(args.ok_if_unmatured_branch),
+                })
                 firmware_data["config"] = cfg
         except Exception:
             pass

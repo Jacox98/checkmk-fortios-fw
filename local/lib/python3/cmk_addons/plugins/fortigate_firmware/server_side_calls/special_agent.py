@@ -24,6 +24,15 @@ def _agent_arguments(params, host_config):
     else:
         args.append("--no-branch-change-critical")
 
+    ok_param = params.get("ok_if_unmatured_branch", False)
+    if isinstance(ok_param, str):
+        ok_flag = ok_param.lower() in ("true", "yes", "on", "1")
+    else:
+        ok_flag = bool(ok_param)
+
+    if ok_flag:
+        args.append("--ok-if-unmatured-branch")
+
     if "port" in params:
         args.extend(["--port", str(params["port"])])
 
