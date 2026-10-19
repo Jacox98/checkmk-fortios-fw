@@ -107,6 +107,47 @@ def main():
         except Exception:
             pass
         return payload
+    
+    def _normalize_license_payload(payload: Any) -> Any:
+        """
+        Normalize FortiOS license payload so Checkmk agent always receives
+        consistent structure.
+
+        FortiOS returns licenses in a pretty stable schema, but older or
+        special builds may wrap elements differently. This function enforces:
+
+            - Top-level dict always present
+            - `results` always a dict (containing all license modules)
+            - `status` always present (default: "success")
+
+        Any additional metadata (serial, version, vdom etc.) is preserved.
+        """
+
+        # Non-dict payload? Pass through unchanged
+        if not isinstance(payload, dict):
+            return payload
+
+        normalized: Dict[str, Any] = dict(payload)
+
+        # Normalize results (all license modules live here)
+        existing_results = normalized.get("results")
+        results: Dict[str, Any] = {}
+
+        if isinstance(existing_results, dict):
+            # Modern FortiOS: good structure
+            results = dict(existing_results)
+        else:
+            # Fallback: collect anything that looks like a module
+            for key, value in normalized.items():
+                if isinstance(value, dict) and key not in ("http_method", "status", "version", "build", "vdom", "path", "name", "serial"):
+                    results[key] = value
+
+        normalized["results"] = results
+
+        # Ensure status present
+        normalized.setdefault("status", "success")
+
+        return normalized
 
     def _normalize_firmware_payload(payload: Any) -> Any:
         """FortiOS 7.6 returns firmware data in a flatter schema.
@@ -187,6 +228,25 @@ def main():
     except Exception as e:
         print("<<<fortigate_firmware:sep(0)>>>")
         print(json.dumps(_error_payload(e, "/monitor/system/firmware")))
+    
+    # Ottieni informazioni licenze
+    try:
+        response = requests.get(
+            f"{base_url}/monitor/license/status?vdom=root",
+            headers=headers,
+            verify=False,
+            timeout=args.timeout,
+        )
+        response.raise_for_status()
+
+        license_data = _normalize_license_payload(response.json())
+
+        print("<<<fortigate_license:sep(0)>>>")
+        print(json.dumps(license_data))
+
+    except Exception as e:
+        print("<<<fortigate_license:sep(0)>>>")
+        print(json.dumps(_error_payload(e, "/monitor/license/status?vdom=root")))
 
 if __name__ == "__main__":
     main()

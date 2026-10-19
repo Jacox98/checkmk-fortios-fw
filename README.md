@@ -6,7 +6,7 @@ Extension for CheckMK to monitor FortiGate firewalls via the REST API.
 
 - Special agent: `libexec/agent_fortigate` - queries the FortiGate API for system status and firmware details.
 - Check plugin: `agent_based/fortigate.py` - evaluates collected data and exposes services like "FortiGate System" and "FortiGate Firmware Updates".
-- Configuration helpers: `rulesets/special_agent.py` and `server_side_calls/special_agent.py` - define rulesets and server-side commands in CheckMK.
+- Configuration: `rulesets/special_agent.py` and `server_side_calls/special_agent.py` define the special-agent rule and command; `rulesets/fortigate_license.py` defines license check parameters.
 - Check manuals: `local/lib/python3/cmk_addons/plugins/fortigate_firmware/checkman/`.
 
 ## Installation
